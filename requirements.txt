@@ -1,0 +1,4 @@
+streamlit
+pinecone
+google-genai
+python-dotenv
