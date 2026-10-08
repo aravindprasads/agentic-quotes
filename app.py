@@ -37,10 +37,12 @@ if st.button("Get Insight"):
                 include_metadata=True
             )
             
-            # Format the retrieved quotes into a readable string for the Agent (NOW INCLUDES SOURCE)
+            # Format the retrieved quotes into a readable string for the Agent (NOW INCLUDES URL)
             context = ""
             for match in search_results['matches']:
-                context += f"- \"{match['metadata']['text']}\" (Author: {match['metadata']['author']}, Source: {match['metadata']['source']})\n"
+                # Safely get the URL just in case a quote doesn't have one
+                url = match['metadata'].get('url', '#')
+                context += f"- \"{match['metadata']['text']}\" (Author: {match['metadata']['author']}, Source: {match['metadata']['source']}, URL: {url})\n"
 
             # 3. Agentic Synthesis: Ask Gemini to act as a curator
             prompt = f"""
@@ -53,7 +55,7 @@ if st.button("Get Insight"):
             
             Format your response exactly like this:
             **"The Quote"** 
-            — *Author Name, Source*
+            — *Author Name, [Source Name](URL)*
             
             💡 **Insight:** Your 2-sentence advice/insight here.
             """

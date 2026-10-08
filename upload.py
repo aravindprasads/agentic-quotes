@@ -9,13 +9,13 @@ print("Connecting to Pinecone and Gemini...")
 pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# Added the 'source' field to all quotes!
+# Added the 'url' field to all quotes
 quotes = [
-  {"id": "1", "author": "Carl Jung", "source": "Analytical Psychology Notes", "text": "I am not what happened to me, I am what I choose to become.", "category": "empowerment"},
-  {"id": "2", "author": "Albus Dumbledore", "source": "Harry Potter and the Prisoner of Azkaban", "text": "Happiness can be found, even in the darkest of times, if one only remembers to turn on the light.", "category": "hope"},
-  {"id": "3", "author": "Marcus Aurelius", "source": "Meditations", "text": "You have power over your mind - not outside events. Realize this, and you will find strength.", "category": "strength"},
-  {"id": "4", "author": "Charles Bukowski", "source": "Factotum", "text": "Sometimes you climb out of bed in the morning and you think, I'm not going to make it, but you laugh inside — remembering all the times you've felt that way.", "category": "overcoming"},
-  {"id": "5", "author": "Robert Frost", "source": "A Servant to Servants", "text": "The only way out is through.", "category": "resilience"}
+  {"id": "1", "author": "Carl Jung", "source": "Analytical Psychology Notes", "url": "https://en.wikipedia.org/wiki/Carl_Jung", "text": "I am not what happened to me, I am what I choose to become.", "category": "empowerment"},
+  {"id": "2", "author": "Albus Dumbledore", "source": "Prisoner of Azkaban", "url": "https://en.wikipedia.org/wiki/Harry_Potter_and_the_Prisoner_of_Azkaban", "text": "Happiness can be found, even in the darkest of times, if one only remembers to turn on the light.", "category": "hope"},
+  {"id": "3", "author": "Marcus Aurelius", "source": "Meditations", "url": "https://en.wikipedia.org/wiki/Meditations", "text": "You have power over your mind - not outside events. Realize this, and you will find strength.", "category": "strength"},
+  {"id": "4", "author": "Charles Bukowski", "source": "Factotum", "url": "https://en.wikipedia.org/wiki/Factotum_(novel)", "text": "Sometimes you climb out of bed in the morning and you think, I'm not going to make it, but you laugh inside — remembering all the times you've felt that way.", "category": "overcoming"},
+  {"id": "5", "author": "Robert Frost", "source": "A Servant to Servants", "url": "https://en.wikipedia.org/wiki/Robert_Frost", "text": "The only way out is through.", "category": "resilience"}
 ]
 
 index = pc.Index('quotes') 
@@ -29,13 +29,13 @@ for q in quotes:
         contents=q["text"]
     )
     
-    # We now pass the 'source' into the metadata so Pinecone remembers it
+    # We now pass the 'url' into the metadata so Pinecone remembers it!
     vectors_to_upload.append({
         "id": q["id"],
         "values": response.embeddings[0].values,
-        "metadata": {"text": q["text"], "author": q["author"], "source": q["source"], "category": q["category"]}
+        "metadata": {"text": q["text"], "author": q["author"], "source": q["source"], "url": q["url"], "category": q["category"]}
     })
 
 print("Uploading to Pinecone...")
 index.upsert(vectors=vectors_to_upload)
-print("✅ Success! Quotes updated with sources.")
+print("✅ Success! Quotes updated with URLs.")
