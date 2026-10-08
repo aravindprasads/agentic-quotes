@@ -1,4 +1,5 @@
 import os
+import random
 import streamlit as st
 from pinecone import Pinecone
 from google import genai
@@ -10,16 +11,22 @@ pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
 index = pc.Index('quotes')
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
+# --- INITIALIZE MEMORY ---
+if 'seen_quotes' not in st.session_state:
+    st.session_state.seen_quotes = []
+
 # --- UI DESIGN ---
 st.set_page_config(page_title="Deepstash AI", page_icon="💡")
 st.title("💡 AI Quote Curation")
 st.write("Tell me how you're feeling, and I'll find the perfect quote and insight for you.")
 
-# User Input
-user_mood = st.text_input("How are you feeling right now? (e.g., 'stressed about work', 'need motivation')")
+# FIX 1: We put the input and button inside a "Form" to stop UI glitches
+with st.form("mood_form"):
+    user_mood = st.text_input("How are you feeling right now? (e.g., 'stressed about work', 'need motivation')")
+    submitted = st.form_submit_button("Get Insight")
 
 # --- AGENT LOGIC ---
-if st.button("Get Insight"):
+if submitted:
     if user_mood:
         with st.spinner("Analyzing mood & searching knowledge base..."):
             
@@ -30,44 +37,57 @@ if st.button("Get Insight"):
             )
             query_vector = emb_response.embeddings[0].values
 
-            # 2. Search Pinecone for the 2 most mathematically similar quotes
+            # 2. Search Pinecone for the top matches
             search_results = index.query(
                 vector=query_vector,
-                top_k=2,
+                top_k=5, 
                 include_metadata=True
             )
             
-            # Format the retrieved quotes into a readable string for the Agent (NOW INCLUDES URL)
-            context = ""
-            for match in search_results['matches']:
-                # Safely get the URL just in case a quote doesn't have one
-                url = match['metadata'].get('url', '#')
-                context += f"- \"{match['metadata']['text']}\" (Author: {match['metadata']['author']}, Source: {match['metadata']['source']}, URL: {url})\n"
+            # Extract matches and shuffle
+            matches = search_results['matches']
+            random.shuffle(matches)
+            
+            # 3. Filter out quotes the user has already seen
+            chosen_match = None
+            for match in matches:
+                if match['id'] not in st.session_state.seen_quotes:
+                    chosen_match = match
+                    break 
+            
+            if chosen_match is None:
+                st.warning("You've seen all the quotes we have for this mood! Close the tab to reset your history, or wait for the database to finish updating.")
+            else:
+                st.session_state.seen_quotes.append(chosen_match['id'])
 
-            # 3. Agentic Synthesis: Ask Gemini to act as a curator
-            prompt = f"""
-            The user is feeling: "{user_mood}"
-            
-            Here are some relevant quotes from our database:
-            {context}
-            
-            Pick the BEST quote from the list above. Then, write a short, 2-sentence 'Deepstash-style' insight explaining how this quote applies to their current mood to help them out.
-            
-            Format your response exactly like this:
-            **"The Quote"** 
-            — *Author Name, [Source Name](URL)*
-            
-            💡 **Insight:** Your 2-sentence advice/insight here.
-            """
+                url = chosen_match['metadata'].get('url', '#')
+                context = f"- \"{chosen_match['metadata']['text']}\" (Author: {chosen_match['metadata']['author']}, Source: {chosen_match['metadata']['source']}, URL: {url})"
 
-            # Call Gemini to format the final UI card
-            agent_response = client.interactions.create(
-                model='gemini-3.8-flash', 
-                input=prompt
-            )
+                # 4. Agentic Synthesis
+                prompt = f"""
+                The user is feeling: "{user_mood}"
+                
+                Here is a quote from our database that fits their mood:
+                {context}
+                
+                Write a short, 2-sentence 'Deepstash-style' insight explaining how this quote applies to their current mood to help them out.
+                
+                Format your response exactly like this:
+                **"The Quote"** 
+                — *Author Name, [Source Name](URL)*
+                
+                💡 **Insight:** Your 2-sentence advice/insight here.
+                """
 
-            # --- DISPLAY RESULT ---
-            st.success("Found the perfect insight!")
-            st.info(agent_response.output_text)
+                # FIX 2: We changed the model to 'flash-lite' for maximum speed
+                agent_response = client.interactions.create(
+                    model='gemini-3.5-flash-lite', 
+                    input=prompt
+                )
+
+                # --- DISPLAY RESULT ---
+                st.success("Found a fresh insight just for you!")
+                st.info(agent_response.output_text)
+                
     else:
         st.warning("Please enter a mood first!")
