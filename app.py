@@ -1,4 +1,4 @@
-iimport os
+import os
 import streamlit as st
 from pinecone import Pinecone
 from google import genai
