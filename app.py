@@ -1,4 +1,4 @@
-import os
+iimport os
 import streamlit as st
 from pinecone import Pinecone
 from google import genai
@@ -37,10 +37,10 @@ if st.button("Get Insight"):
                 include_metadata=True
             )
             
-            # Format the retrieved quotes into a readable string for the Agent
+            # Format the retrieved quotes into a readable string for the Agent (NOW INCLUDES SOURCE)
             context = ""
             for match in search_results['matches']:
-                context += f"- \"{match['metadata']['text']}\" (Author: {match['metadata']['author']})\n"
+                context += f"- \"{match['metadata']['text']}\" (Author: {match['metadata']['author']}, Source: {match['metadata']['source']})\n"
 
             # 3. Agentic Synthesis: Ask Gemini to act as a curator
             prompt = f"""
@@ -52,7 +52,8 @@ if st.button("Get Insight"):
             Pick the BEST quote from the list above. Then, write a short, 2-sentence 'Deepstash-style' insight explaining how this quote applies to their current mood to help them out.
             
             Format your response exactly like this:
-            **"The Quote"** - Author Name
+            **"The Quote"** 
+            — *Author Name, Source*
             
             💡 **Insight:** Your 2-sentence advice/insight here.
             """
