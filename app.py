@@ -10,11 +10,11 @@ pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
 index = pc.Index('quotes')
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# --- MEMORY ---
+# --- MEMORY & STATE ---
 if 'seen_quotes' not in st.session_state:
     st.session_state.seen_quotes = []
-if 'result' not in st.session_state:
-    st.session_state.result = None
+if 'mood_input' not in st.session_state:
+    st.session_state.mood_input = ''
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -37,15 +37,6 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
 
-    .left-panel {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 24px;
-        padding: 40px 32px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
-        height: 100%;
-    }
-
     .app-title {
         font-family: 'Inter', sans-serif;
         font-size: 28px;
@@ -57,7 +48,7 @@ st.markdown("""
     .app-subtitle {
         font-size: 14px;
         color: rgba(255,255,255,0.5);
-        margin-bottom: 40px;
+        margin-bottom: 28px;
     }
 
     .input-label {
@@ -69,6 +60,7 @@ st.markdown("""
         margin-bottom: 8px;
     }
 
+    /* Text input styling */
     .stTextInput > div > div > input {
         background: rgba(255,255,255,0.08) !important;
         border: 1px solid rgba(255,255,255,0.15) !important;
@@ -88,6 +80,7 @@ st.markdown("""
         color: rgba(255,255,255,0.3) !important;
     }
 
+    /* Submit button (inside form) */
     .stFormSubmitButton > button {
         background: linear-gradient(135deg, #6c63ff, #4facfe) !important;
         color: white !important;
@@ -97,7 +90,7 @@ st.markdown("""
         font-size: 15px !important;
         font-weight: 600 !important;
         width: 100% !important;
-        margin-top: 16px !important;
+        margin-top: 8px !important;
         cursor: pointer !important;
         transition: all 0.3s ease !important;
     }
@@ -107,22 +100,27 @@ st.markdown("""
         box-shadow: 0 8px 25px rgba(108,99,255,0.4) !important;
     }
 
-    .mood-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 24px;
+    /* Pill buttons (outside form) — styled to look like tags */
+    .stButton > button {
+        background: rgba(255,255,255,0.07) !important;
+        border: 1px solid rgba(255,255,255,0.15) !important;
+        border-radius: 20px !important;
+        padding: 4px 10px !important;
+        font-size: 12px !important;
+        color: rgba(255,255,255,0.65) !important;
+        width: 100% !important;
+        transition: all 0.2s ease !important;
+        white-space: nowrap !important;
     }
 
-    .pill {
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.15);
-        border-radius: 20px;
-        padding: 6px 14px;
-        font-size: 12px;
-        color: rgba(255,255,255,0.6);
+    .stButton > button:hover {
+        background: rgba(108,99,255,0.25) !important;
+        border-color: #6c63ff !important;
+        color: white !important;
+        transform: translateY(-1px) !important;
     }
 
+    /* Quote card */
     .quote-card {
         background: rgba(255, 255, 255, 0.06);
         border-radius: 24px;
@@ -190,27 +188,14 @@ st.markdown("""
         padding: 60px 20px;
     }
 
-    .empty-icon {
-        font-size: 64px;
-        margin-bottom: 16px;
-    }
-
-    .empty-title {
-        font-size: 20px;
-        font-weight: 600;
-        color: rgba(255,255,255,0.8);
-        margin-bottom: 8px;
-    }
-
-    .empty-sub {
-        font-size: 14px;
-        color: rgba(255,255,255,0.4);
-    }
+    .empty-icon { font-size: 64px; margin-bottom: 16px; }
+    .empty-title { font-size: 20px; font-weight: 600; color: rgba(255,255,255,0.8); margin-bottom: 8px; }
+    .empty-sub { font-size: 14px; color: rgba(255,255,255,0.4); }
 
     .stats-row {
         display: flex;
         gap: 12px;
-        margin-top: 32px;
+        margin-top: 24px;
     }
 
     .stat-box {
@@ -222,17 +207,8 @@ st.markdown("""
         border: 1px solid rgba(255,255,255,0.08);
     }
 
-    .stat-number {
-        font-size: 20px;
-        font-weight: 700;
-        color: #6c63ff;
-    }
-
-    .stat-label {
-        font-size: 11px;
-        color: rgba(255,255,255,0.4);
-        margin-top: 2px;
-    }
+    .stat-number { font-size: 20px; font-weight: 700; color: #6c63ff; }
+    .stat-label { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -244,38 +220,45 @@ left_col, right_col = st.columns([1, 1.4], gap="large")
 # =====================
 with left_col:
     st.markdown("""
-        <div class="left-panel">
-            <div class="app-title">🎭 Vibe & Verse</div>
-            <div class="app-subtitle">Find your quote. Feel your moment.</div>
-        </div>
+        <div class="app-title">🎭 Vibe & Verse</div>
+        <div class="app-subtitle">Find your quote. Feel your moment.</div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="input-label">What\'s your vibe?</div>', unsafe_allow_html=True)
+    # --- CLICKABLE MOOD PILLS ---
+    st.markdown('<div class="input-label">Try a vibe</div>', unsafe_allow_html=True)
 
+    moods = [
+        ("😟", "Anxious"),
+        ("💪", "Motivated"),
+        ("😔", "Sad"),
+        ("🎯", "Focused"),
+        ("😤", "Frustrated"),
+        ("🌱", "Growing"),
+        ("😌", "Peaceful"),
+        ("🚀", "Ambitious"),
+    ]
+
+    # Render pills as real buttons in a 4-column grid
+    pill_cols = st.columns(4)
+    for i, (emoji, mood) in enumerate(moods):
+        with pill_cols[i % 4]:
+            if st.button(f"{emoji} {mood}", key=f"pill_{mood}"):
+                # When clicked, auto-fill the text input via session state
+                st.session_state.mood_input = mood
+
+    st.markdown('<div class="input-label" style="margin-top:20px;">What\'s your vibe?</div>', unsafe_allow_html=True)
+
+    # --- FORM WITH PRE-FILLED INPUT ---
     with st.form("mood_form"):
         user_mood = st.text_input(
             label="mood",
             label_visibility="collapsed",
-            placeholder="e.g. stressed, need motivation, feeling lost..."
+            placeholder="e.g. stressed, need motivation, feeling lost...",
+            value=st.session_state.mood_input  # ← This is the magic line!
         )
         submitted = st.form_submit_button("🎭  Find My Verse")
 
-    st.markdown("""
-        <div style="margin-top: 20px;">
-            <div class="input-label">Try a vibe</div>
-            <div class="mood-pills">
-                <span class="pill">😟 Anxious</span>
-                <span class="pill">💪 Motivated</span>
-                <span class="pill">😔 Sad</span>
-                <span class="pill">🎯 Focused</span>
-                <span class="pill">😤 Frustrated</span>
-                <span class="pill">🌱 Growing</span>
-                <span class="pill">😌 Peaceful</span>
-                <span class="pill">🚀 Ambitious</span>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
+    # Stats
     quotes_seen = len(st.session_state.seen_quotes)
     st.markdown(f"""
         <div class="stats-row">
@@ -331,7 +314,7 @@ with right_col:
                         <div class="empty-state">
                             <div class="empty-icon">🎉</div>
                             <div class="empty-title">You've heard every verse!</div>
-                            <div class="empty-sub">Refresh the page to reset your history,<br>or try a completely different vibe.</div>
+                            <div class="empty-sub">Refresh the page to reset,<br>or try a completely different vibe.</div>
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
@@ -358,16 +341,13 @@ with right_col:
                 )
 
                 insight = agent_response.output_text.strip()
-                quote_text = meta['text']
-                author = meta['author']
-                source = meta['source']
 
                 st.markdown(f"""
                     <div class="quote-card">
                         <div class="quote-icon">"</div>
-                        <div class="quote-text">{quote_text}</div>
+                        <div class="quote-text">{meta['text']}</div>
                         <div class="quote-attribution">
-                            — {author} &nbsp;·&nbsp; <a href="{url}" target="_blank">📚 {source}</a>
+                            — {meta['author']} &nbsp;·&nbsp; <a href="{url}" target="_blank">📚 {meta['source']}</a>
                         </div>
                         <div class="divider"></div>
                         <div class="insight-label">💡 Your Insight</div>
@@ -381,7 +361,7 @@ with right_col:
                 <div class="empty-state">
                     <div class="empty-icon">🎭</div>
                     <div class="empty-title">Your verse will appear here</div>
-                    <div class="empty-sub">Type your vibe on the left<br>and let AI find your perfect verse.</div>
+                    <div class="empty-sub">Click a vibe above or type your own,<br>then hit Find My Verse.</div>
                 </div>
             </div>
         """, unsafe_allow_html=True)
