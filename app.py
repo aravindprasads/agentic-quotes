@@ -1,25 +1,41 @@
+import html
 import os
 import random
+import time
+
 import streamlit as st
-from pinecone import Pinecone
-from google import genai
+import streamlit.components.v1 as components
 from dotenv import load_dotenv
+from google import genai
+from pinecone import Pinecone
 
 load_dotenv()
-pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
-index = pc.Index('quotes')
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+
+# --- PAGE CONFIG (keep this as the first Streamlit command) ---
+st.set_page_config(
+    page_title="Vibe & Verse",
+    page_icon="🎭",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+
+# --- CLIENTS (created once, not on every rerun) ---
+@st.cache_resource
+def get_clients():
+    pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
+    index = pc.Index("quotes")
+    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+    return index, client
+
+
+index, client = get_clients()
 
 # --- STATE ---
-if 'seen_quotes' not in st.session_state:
-    st.session_state.seen_quotes = []
-if 'mood_input' not in st.session_state:
-    st.session_state.mood_input = ''
-if 'quote_result' not in st.session_state:
-    st.session_state.quote_result = None
-
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="Vibe & Verse", page_icon="🎭", layout="wide")
+st.session_state.setdefault("seen_quotes", [])
+st.session_state.setdefault("mood_text", "")
+st.session_state.setdefault("quote_result", None)
+st.session_state.setdefault("scroll_to_result", False)
 
 # --- CSS ---
 st.markdown("""
@@ -33,11 +49,11 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
 
-    .block-container {
-        padding-top: 1.5rem !important;
-        padding-left: 1.5rem !important;
-        padding-right: 1.5rem !important;
-        max-width: 100% !important;
+    /* One layout for every screen: readable max width, centred on big monitors */
+    [data-testid="stMainBlockContainer"], .block-container {
+        padding: 1.5rem 1.5rem 3rem !important;
+        max-width: 1200px !important;
+        margin: 0 auto !important;
     }
 
     .app-title {
@@ -55,14 +71,14 @@ st.markdown("""
         margin-bottom: 6px; margin-top: 4px;
     }
 
-    /* Text input */
+    /* Text input (16px stops iOS Safari from zooming in on focus) */
     .stTextInput > div > div > input {
         background: rgba(255,255,255,0.08) !important;
         border: 1px solid rgba(255,255,255,0.15) !important;
         border-radius: 12px !important;
         color: white !important;
         padding: 12px 16px !important;
-        font-size: 15px !important;
+        font-size: 16px !important;
         font-family: 'Inter', sans-serif !important;
     }
     .stTextInput > div > div > input:focus {
@@ -73,11 +89,15 @@ st.markdown("""
         color: rgba(255,255,255,0.3) !important;
     }
 
+    /* Form container: no extra box, the page already has structure */
+    [data-testid="stForm"] { border: none !important; padding: 0 !important; }
+
     /* Submit button */
     .stFormSubmitButton > button {
         background: linear-gradient(135deg, #6c63ff, #4facfe) !important;
         color: white !important; border: none !important;
         border-radius: 12px !important; padding: 13px 32px !important;
+        min-height: 48px !important;
         font-size: 15px !important; font-weight: 600 !important;
         width: 100% !important; margin-top: 8px !important;
         cursor: pointer !important; transition: all 0.3s ease !important;
@@ -91,8 +111,8 @@ st.markdown("""
     .stButton > button {
         background: rgba(255,255,255,0.07) !important;
         border: 1px solid rgba(255,255,255,0.15) !important;
-        border-radius: 20px !important; padding: 4px 6px !important;
-        font-size: 11px !important; color: rgba(255,255,255,0.65) !important;
+        border-radius: 20px !important; padding: 6px 4px !important;
+        font-size: 12px !important; color: rgba(255,255,255,0.65) !important;
         width: 100% !important; transition: all 0.2s ease !important;
         white-space: nowrap !important;
     }
@@ -101,25 +121,20 @@ st.markdown("""
         border-color: #6c63ff !important; color: white !important;
     }
 
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        background: rgba(255,255,255,0.05) !important;
-        border-radius: 12px !important;
-        padding: 4px !important; gap: 4px !important;
-        border: 1px solid rgba(255,255,255,0.1) !important;
+    /* Pills wrap into a grid instead of stacking one per row on phones.
+       4 per row on desktop, 2 per row on small screens. */
+    .st-key-pills [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important; gap: 0.5rem !important;
     }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 8px !important;
-        color: rgba(255,255,255,0.5) !important;
-        font-weight: 600 !important; font-size: 14px !important;
-        padding: 8px 20px !important;
+    .st-key-pills [data-testid="stColumn"],
+    .st-key-pills [data-testid="column"] {
+        flex: 1 1 calc(25% - 0.5rem) !important;
+        min-width: calc(25% - 0.5rem) !important;
+        width: auto !important;
     }
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #6c63ff, #4facfe) !important;
-        color: white !important;
-    }
-    .stTabs [data-baseweb="tab-border"] { display: none !important; }
-    .stTabs [data-baseweb="tab-panel"] { padding-top: 16px !important; }
+
+    /* Loading spinner text stays readable on the dark background */
+    .stSpinner, .stSpinner * { color: rgba(255,255,255,0.8) !important; }
 
     /* Quote card */
     .quote-card {
@@ -129,6 +144,7 @@ st.markdown("""
         backdrop-filter: blur(10px);
         display: flex; flex-direction: column;
         justify-content: center; min-height: 420px;
+        overflow-wrap: anywhere;
     }
     .quote-icon {
         font-size: 48px; color: rgba(108,99,255,0.4);
@@ -143,11 +159,11 @@ st.markdown("""
     .quote-attribution {
         font-size: 13px; color: rgba(255,255,255,0.5); margin-bottom: 24px;
     }
-    .quote-attribution a { color: #6c63ff !important; text-decoration: none; }
+    .quote-attribution a { color: #8f88ff !important; text-decoration: none; }
     .quote-attribution a:hover { text-decoration: underline !important; }
     .divider { height: 1px; background: rgba(255,255,255,0.1); margin-bottom: 18px; }
     .insight-label {
-        font-size: 11px; font-weight: 700; color: #6c63ff;
+        font-size: 11px; font-weight: 700; color: #8f88ff;
         text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;
     }
     .insight-text {
@@ -167,23 +183,22 @@ st.markdown("""
         border-radius: 10px; padding: 10px; text-align: center;
         border: 1px solid rgba(255,255,255,0.08);
     }
-    .stat-number { font-size: 18px; font-weight: 700; color: #6c63ff; }
+    .stat-number { font-size: 18px; font-weight: 700; color: #8f88ff; }
     .stat-label { font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 2px; }
 
-    /* Desktop: show columns, hide tabs */
-    @media (min-width: 769px) {
-        .mobile-only { display: none !important; }
-    }
-
-    /* Mobile: hide columns, show tabs */
+    /* Phones and small tablets. Streamlit already stacks the two columns at this
+       width, so the form comes first and the quote card follows right below it. */
     @media (max-width: 768px) {
-        .desktop-only { display: none !important; }
-        .block-container {
-            padding-top: 0.75rem !important;
-            padding-left: 0.75rem !important;
-            padding-right: 0.75rem !important;
+        [data-testid="stMainBlockContainer"], .block-container {
+            padding: 0.75rem 0.75rem 2rem !important;
         }
         .app-title { font-size: 22px !important; }
+        .st-key-pills [data-testid="stColumn"],
+        .st-key-pills [data-testid="column"] {
+            flex: 1 1 calc(50% - 0.5rem) !important;
+            min-width: calc(50% - 0.5rem) !important;
+        }
+        .stButton > button { font-size: 14px !important; padding: 10px 6px !important; }
         .quote-card { min-height: unset !important; padding: 22px 18px !important; }
         .quote-text { font-size: 18px !important; }
         .quote-icon { font-size: 36px !important; margin-bottom: 12px !important; }
@@ -193,140 +208,202 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ── Reusable: run the agent ────────────────────────────────────────────
-def run_agent(user_mood):
+# ── Helpers ────────────────────────────────────────────────────────────
+def esc(value) -> str:
+    """Escape text before it goes into raw HTML (quotes, LLM output, metadata).
+    '$' is escaped too so Markdown does not treat it as the start of a formula."""
+    return html.escape(str(value or "")).replace("$", "&#36;")
+
+
+def compact(markup: str) -> str:
+    """Join HTML into one line so Markdown never mistakes indented lines for a code block."""
+    return "".join(line.strip() for line in markup.splitlines())
+
+
+def safe_url(url) -> str:
+    url = str(url or "")
+    return url if url.startswith(("http://", "https://")) else "#"
+
+
+# ── Run the agent ──────────────────────────────────────────────────────
+def run_agent(user_mood: str):
     emb_response = client.models.embed_content(
-        model='gemini-embedding-001',
-        contents=user_mood
+        model="gemini-embedding-001",
+        contents=user_mood,
     )
     query_vector = emb_response.embeddings[0].values
 
     search_results = index.query(
         vector=query_vector,
         top_k=10,
-        include_metadata=True
+        include_metadata=True,
     )
 
-    matches = search_results['matches']
+    matches = list(search_results["matches"])
     random.shuffle(matches)
 
-    chosen_match = None
-    for match in matches:
-        if match['id'] not in st.session_state.seen_quotes:
-            chosen_match = match
-            break
-
-    if chosen_match is None:
-        return None
-
-    st.session_state.seen_quotes.append(chosen_match['id'])
-    meta = chosen_match['metadata']
-
-    prompt = f"""
-    The user's current vibe is: "{user_mood}"
-    Here is a matching quote:
-    "{meta['text']}" — {meta['author']}, {meta['source']}
-    Write a powerful 2-sentence Deepstash-style insight explaining how
-    this quote applies to their current mood. Be warm, direct and human.
-    Only output the 2 sentences, nothing else.
-    """
-
-    agent_response = client.interactions.create(
-        model='gemini-3.5-flash-lite',
-        input=prompt
+    chosen_match = next(
+        (m for m in matches if m["id"] not in st.session_state.seen_quotes), None
     )
+    if chosen_match is None:
+        return {"exhausted": True}
+
+    st.session_state.seen_quotes.append(chosen_match["id"])
+    meta = chosen_match["metadata"]
+
+    # The insight is a bonus: if the LLM is busy or rate-limited,
+    # still show the quote instead of failing the whole request.
+    insight = ""
+    try:
+        prompt = f"""
+        The user's current vibe is: "{user_mood}"
+        Here is a matching quote:
+        "{meta['text']}" — {meta['author']}, {meta['source']}
+        Write a powerful 2-sentence Deepstash-style insight explaining how
+        this quote applies to their current mood. Be warm, direct and human.
+        Only output the 2 sentences, nothing else.
+        """
+        agent_response = client.interactions.create(
+            model="gemini-3.5-flash-lite",
+            input=prompt,
+        )
+        insight = agent_response.output_text.strip()
+    except Exception:
+        insight = ""
 
     return {
-        "text": meta['text'],
-        "author": meta['author'],
-        "source": meta['source'],
-        "url": meta.get('url', '#'),
-        "insight": agent_response.output_text.strip()
+        "text": meta["text"],
+        "author": meta.get("author", ""),
+        "source": meta.get("source", ""),
+        "url": meta.get("url", "#"),
+        "insight": insight,
     }
 
 
-# ── Reusable: render quote card ────────────────────────────────────────
-def render_quote_card(result):
-    if result is None:
-        st.markdown("""
-            <div class="quote-card"><div class="empty-state">
-                <div class="empty-icon">🎉</div>
-                <div class="empty-title">You've heard every verse!</div>
-                <div class="empty-sub">Refresh to reset,<br>or try a different vibe.</div>
-            </div></div>""", unsafe_allow_html=True)
-    else:
-        st.markdown(f"""
-            <div class="quote-card">
-                <div class="quote-icon">"</div>
-                <div class="quote-text">{result['text']}</div>
-                <div class="quote-attribution">
-                    — {result['author']} &nbsp;·&nbsp;
-                    <a href="{result['url']}" target="_blank">📚 {result['source']}</a>
-                </div>
-                <div class="divider"></div>
-                <div class="insight-label">💡 Your Insight</div>
-                <div class="insight-text">{result['insight']}</div>
-            </div>""", unsafe_allow_html=True)
-
-
+# ── Render: quote card ─────────────────────────────────────────────────
 def render_empty_card():
-    st.markdown("""
+    st.markdown(compact("""
         <div class="quote-card"><div class="empty-state">
             <div class="empty-icon">🎭</div>
             <div class="empty-title">Your verse will appear here</div>
-            <div class="empty-sub">Click a vibe or type your own,<br>then hit Find My Verse.</div>
-        </div></div>""", unsafe_allow_html=True)
+            <div class="empty-sub">Tap a vibe or type your own,<br>then press Find My Verse.</div>
+        </div></div>"""), unsafe_allow_html=True)
 
 
-# ── Reusable: render pill buttons + form ──────────────────────────────
-# KEY FIX: suffix is passed into every button key so desktop
-# and mobile buttons never share the same widget ID.
-def render_input_and_form(suffix):
+def render_quote_card(result):
+    if not result:
+        render_empty_card()
+        return
+
+    if result.get("exhausted"):
+        st.markdown(compact("""
+            <div class="quote-card"><div class="empty-state">
+                <div class="empty-icon">🎉</div>
+                <div class="empty-title">You've heard every verse for this vibe</div>
+                <div class="empty-sub">Try a different vibe, or refresh the page to start over.</div>
+            </div></div>"""), unsafe_allow_html=True)
+        return
+
+    insight_block = ""
+    if result.get("insight"):
+        insight_block = (
+            '<div class="divider"></div>'
+            '<div class="insight-label">💡 Your Insight</div>'
+            f'<div class="insight-text">{esc(result["insight"])}</div>'
+        )
+
+    st.markdown(compact(f"""
+        <div class="quote-card">
+            <div class="quote-icon">"</div>
+            <div class="quote-text">{esc(result['text'])}</div>
+            <div class="quote-attribution">
+                — {esc(result['author'])} &nbsp;·&nbsp;
+                <a href="{esc(safe_url(result['url']))}" target="_blank" rel="noopener noreferrer">📚 {esc(result['source'])}</a>
+            </div>
+            {insight_block}
+        </div>"""), unsafe_allow_html=True)
+
+
+def scroll_to_card():
+    """On phones the card sits below the form, so bring it into view after a new result."""
+    components.html(
+        f"""<script>/* {time.time()} */
+        setTimeout(function () {{
+            try {{
+                var w = window.parent;
+                if (w.innerWidth <= 768) {{
+                    var el = w.document.querySelector('.quote-card');
+                    if (el) el.scrollIntoView({{behavior: 'smooth', block: 'start'}});
+                }}
+            }} catch (e) {{}}
+        }}, 300);
+        </script>""",
+        height=0,
+    )
+
+
+# ── Render: vibe pills + input form (rendered exactly once) ────────────
+MOODS = [
+    ("😟", "Anxious"), ("💪", "Motivated"), ("😔", "Sad"), ("🎯", "Focused"),
+    ("😤", "Frustrated"), ("🌱", "Growing"), ("😌", "Peaceful"), ("🚀", "Ambitious"),
+]
+
+
+def pick_mood(mood: str):
+    # Runs before the rerun, so the text box shows the chosen vibe
+    st.session_state.mood_text = mood
+
+
+def render_input_and_form() -> bool:
     st.markdown("""
         <div class="app-title">🎭 Vibe & Verse</div>
         <div class="app-subtitle">Find your quote. Feel your moment.</div>
         <div class="input-label">Try a vibe</div>
     """, unsafe_allow_html=True)
 
-    moods = [
-        ("😟", "Anxious"), ("💪", "Motivated"),
-        ("😔", "Sad"),     ("🎯", "Focused"),
-        ("😤", "Frustrated"), ("🌱", "Growing"),
-        ("😌", "Peaceful"), ("🚀", "Ambitious"),
-    ]
+    try:
+        pills_box = st.container(key="pills")  # needs a recent Streamlit
+    except TypeError:
+        pills_box = st.container()
+    with pills_box:
+        cols = st.columns(len(MOODS))
+        for col, (emoji, mood) in zip(cols, MOODS):
+            with col:
+                st.button(
+                    f"{emoji} {mood}",
+                    key=f"pill_{mood}",
+                    on_click=pick_mood,
+                    args=(mood,),
+                )
 
-    pill_cols = st.columns(4)
-    for i, (emoji, mood) in enumerate(moods):
-        with pill_cols[i % 4]:
-            # ✅ Unique key per layout using suffix
-            if st.button(f"{emoji} {mood}", key=f"pill_{mood}_{suffix}"):
-                st.session_state.mood_input = mood
+    st.markdown(
+        '<div class="input-label" style="margin-top:16px;">What\'s your vibe?</div>',
+        unsafe_allow_html=True,
+    )
 
-    st.markdown('<div class="input-label" style="margin-top:16px;">What\'s your vibe?</div>',
-                unsafe_allow_html=True)
-
-    with st.form(f"mood_form_{suffix}"):
-        user_mood = st.text_input(
-            label="mood", label_visibility="collapsed",
+    with st.form("mood_form"):
+        st.text_input(
+            label="mood",
+            label_visibility="collapsed",
             placeholder="e.g. stressed, need motivation, feeling lost...",
-            value=st.session_state.mood_input
+            key="mood_text",
         )
         submitted = st.form_submit_button("🎭  Find My Verse")
 
-    return user_mood, submitted
+    return submitted
 
 
+# ══════════════════════════════════════════════════
+# SINGLE RESPONSIVE LAYOUT
+#   Desktop: inputs on the left, quote on the right.
+#   Phone:   Streamlit stacks the columns, inputs first, quote below.
+# ══════════════════════════════════════════════════
 quotes_seen = len(st.session_state.seen_quotes)
-
-# ══════════════════════════════════════════════════
-# DESKTOP LAYOUT
-# ══════════════════════════════════════════════════
-st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
 
 left_col, right_col = st.columns([1, 1.4], gap="large")
 
 with left_col:
-    user_mood_d, submitted_d = render_input_and_form("desktop")
+    submitted = render_input_and_form()
     st.markdown(f"""
         <div class="stats-row">
             <div class="stat-box">
@@ -344,35 +421,23 @@ with left_col:
         </div>""", unsafe_allow_html=True)
 
 with right_col:
-    if submitted_d and user_mood_d:
-        with st.spinner("Matching your vibe to the perfect verse..."):
-            st.session_state.quote_result = run_agent(user_mood_d)
-        render_quote_card(st.session_state.quote_result)
-    elif st.session_state.quote_result:
-        render_quote_card(st.session_state.quote_result)
-    else:
-        render_empty_card()
+    if submitted:
+        mood = st.session_state.mood_text.strip()
+        if not mood:
+            st.warning("Type how you feel or tap a vibe, then press Find My Verse.")
+        else:
+            with st.spinner("Matching your vibe to the perfect verse..."):
+                try:
+                    st.session_state.quote_result = run_agent(mood)
+                    st.session_state.scroll_to_result = True
+                except Exception:
+                    st.error(
+                        "The quote service didn't respond. "
+                        "Wait a few seconds and press Find My Verse again."
+                    )
 
-st.markdown('</div>', unsafe_allow_html=True)
+    render_quote_card(st.session_state.quote_result)
 
-# ══════════════════════════════════════════════════
-# MOBILE LAYOUT (tabs)
-# ══════════════════════════════════════════════════
-st.markdown('<div class="mobile-only">', unsafe_allow_html=True)
-
-tab1, tab2 = st.tabs(["🎭 Find My Verse", "💬 My Quote"])
-
-with tab1:
-    user_mood_m, submitted_m = render_input_and_form("mobile")
-    if submitted_m and user_mood_m:
-        with st.spinner("Finding your verse..."):
-            st.session_state.quote_result = run_agent(user_mood_m)
-        st.success("✅ Done! Tap 'My Quote' to see your verse →")
-
-with tab2:
-    if st.session_state.quote_result:
-        render_quote_card(st.session_state.quote_result)
-    else:
-        render_empty_card()
-
-st.markdown('</div>', unsafe_allow_html=True)
+    if st.session_state.scroll_to_result:
+        st.session_state.scroll_to_result = False
+        scroll_to_card()
