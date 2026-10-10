@@ -23,7 +23,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CUSTOM CSS ---
+# --- CUSTOM CSS (FULLY RESPONSIVE) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Playfair+Display:ital,wght@1,700&display=swap');
@@ -32,11 +32,59 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
+    /* ── Base Styles ── */
     .stApp {
         background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
         font-family: 'Inter', sans-serif;
     }
 
+    /* Remove default Streamlit padding on mobile */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        max-width: 100% !important;
+    }
+
+    /* ── DESKTOP: Side-by-side columns ── */
+    [data-testid="stHorizontalBlock"] {
+        gap: 1.5rem;
+        align-items: flex-start;
+    }
+
+    /* ── MOBILE: Stack columns vertically ── */
+    @media (max-width: 768px) {
+        [data-testid="stHorizontalBlock"] {
+            flex-direction: column !important;
+        }
+
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+
+        .block-container {
+            padding-top: 1rem !important;
+            padding-left: 0.75rem !important;
+            padding-right: 0.75rem !important;
+        }
+
+        .app-title {
+            font-size: 22px !important;
+        }
+
+        .quote-text {
+            font-size: 20px !important;
+        }
+
+        .quote-card {
+            padding: 28px 22px !important;
+            min-height: 300px !important;
+        }
+    }
+
+    /* ── Typography ── */
     .app-title {
         font-family: 'Inter', sans-serif;
         font-size: 28px;
@@ -48,7 +96,7 @@ st.markdown("""
     .app-subtitle {
         font-size: 14px;
         color: rgba(255,255,255,0.5);
-        margin-bottom: 28px;
+        margin-bottom: 24px;
     }
 
     .input-label {
@@ -58,9 +106,10 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 1px;
         margin-bottom: 8px;
+        margin-top: 4px;
     }
 
-    /* Text input styling */
+    /* ── Text Input ── */
     .stTextInput > div > div > input {
         background: rgba(255,255,255,0.08) !important;
         border: 1px solid rgba(255,255,255,0.15) !important;
@@ -80,7 +129,7 @@ st.markdown("""
         color: rgba(255,255,255,0.3) !important;
     }
 
-    /* Submit button (inside form) */
+    /* ── Submit Button ── */
     .stFormSubmitButton > button {
         background: linear-gradient(135deg, #6c63ff, #4facfe) !important;
         color: white !important;
@@ -100,12 +149,12 @@ st.markdown("""
         box-shadow: 0 8px 25px rgba(108,99,255,0.4) !important;
     }
 
-    /* Pill buttons (outside form) — styled to look like tags */
+    /* ── Pill Buttons ── */
     .stButton > button {
         background: rgba(255,255,255,0.07) !important;
         border: 1px solid rgba(255,255,255,0.15) !important;
         border-radius: 20px !important;
-        padding: 4px 10px !important;
+        padding: 4px 8px !important;
         font-size: 12px !important;
         color: rgba(255,255,255,0.65) !important;
         width: 100% !important;
@@ -120,41 +169,40 @@ st.markdown("""
         transform: translateY(-1px) !important;
     }
 
-    /* Quote card */
+    /* ── Quote Card ── */
     .quote-card {
         background: rgba(255, 255, 255, 0.06);
         border-radius: 24px;
-        padding: 48px 40px;
+        padding: 40px 36px;
         border: 1px solid rgba(255, 255, 255, 0.1);
         backdrop-filter: blur(10px);
-        height: 100%;
         display: flex;
         flex-direction: column;
         justify-content: center;
-        min-height: 500px;
+        min-height: 460px;
     }
 
     .quote-icon {
-        font-size: 60px;
+        font-size: 52px;
         color: rgba(108,99,255,0.4);
         line-height: 1;
-        margin-bottom: 24px;
+        margin-bottom: 20px;
         font-family: 'Playfair Display', serif;
     }
 
     .quote-text {
         font-family: 'Playfair Display', serif;
-        font-size: 26px;
+        font-size: 24px;
         font-style: italic;
         color: #ffffff;
         line-height: 1.6;
-        margin-bottom: 24px;
+        margin-bottom: 20px;
     }
 
     .quote-attribution {
         font-size: 14px;
         color: rgba(255,255,255,0.5);
-        margin-bottom: 32px;
+        margin-bottom: 28px;
     }
 
     .quote-attribution a {
@@ -162,10 +210,14 @@ st.markdown("""
         text-decoration: none;
     }
 
+    .quote-attribution a:hover {
+        text-decoration: underline !important;
+    }
+
     .divider {
         height: 1px;
         background: rgba(255,255,255,0.1);
-        margin-bottom: 24px;
+        margin-bottom: 20px;
     }
 
     .insight-label {
@@ -174,7 +226,7 @@ st.markdown("""
         color: #6c63ff;
         text-transform: uppercase;
         letter-spacing: 2px;
-        margin-bottom: 12px;
+        margin-bottom: 10px;
     }
 
     .insight-text {
@@ -183,32 +235,46 @@ st.markdown("""
         line-height: 1.7;
     }
 
+    /* ── Empty State ── */
     .empty-state {
         text-align: center;
         padding: 60px 20px;
     }
 
     .empty-icon { font-size: 64px; margin-bottom: 16px; }
-    .empty-title { font-size: 20px; font-weight: 600; color: rgba(255,255,255,0.8); margin-bottom: 8px; }
-    .empty-sub { font-size: 14px; color: rgba(255,255,255,0.4); }
 
+    .empty-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: rgba(255,255,255,0.8);
+        margin-bottom: 8px;
+    }
+
+    .empty-sub {
+        font-size: 14px;
+        color: rgba(255,255,255,0.4);
+        line-height: 1.6;
+    }
+
+    /* ── Stats Row ── */
     .stats-row {
         display: flex;
-        gap: 12px;
-        margin-top: 24px;
+        gap: 10px;
+        margin-top: 20px;
     }
 
     .stat-box {
         flex: 1;
         background: rgba(255,255,255,0.05);
         border-radius: 12px;
-        padding: 12px;
+        padding: 10px;
         text-align: center;
         border: 1px solid rgba(255,255,255,0.08);
     }
 
-    .stat-number { font-size: 20px; font-weight: 700; color: #6c63ff; }
+    .stat-number { font-size: 18px; font-weight: 700; color: #6c63ff; }
     .stat-label { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px; }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -224,7 +290,7 @@ with left_col:
         <div class="app-subtitle">Find your quote. Feel your moment.</div>
     """, unsafe_allow_html=True)
 
-    # --- CLICKABLE MOOD PILLS ---
+    # Clickable mood pills
     st.markdown('<div class="input-label">Try a vibe</div>', unsafe_allow_html=True)
 
     moods = [
@@ -238,23 +304,20 @@ with left_col:
         ("🚀", "Ambitious"),
     ]
 
-    # Render pills as real buttons in a 4-column grid
     pill_cols = st.columns(4)
     for i, (emoji, mood) in enumerate(moods):
         with pill_cols[i % 4]:
             if st.button(f"{emoji} {mood}", key=f"pill_{mood}"):
-                # When clicked, auto-fill the text input via session state
                 st.session_state.mood_input = mood
 
-    st.markdown('<div class="input-label" style="margin-top:20px;">What\'s your vibe?</div>', unsafe_allow_html=True)
+    st.markdown('<div class="input-label" style="margin-top:18px;">What\'s your vibe?</div>', unsafe_allow_html=True)
 
-    # --- FORM WITH PRE-FILLED INPUT ---
     with st.form("mood_form"):
         user_mood = st.text_input(
             label="mood",
             label_visibility="collapsed",
             placeholder="e.g. stressed, need motivation, feeling lost...",
-            value=st.session_state.mood_input  # ← This is the magic line!
+            value=st.session_state.mood_input
         )
         submitted = st.form_submit_button("🎭  Find My Verse")
 
@@ -326,11 +389,11 @@ with right_col:
                 # 4. Agent Synthesis
                 prompt = f"""
                 The user's current vibe is: "{user_mood}"
-                
+
                 Here is a matching quote:
                 "{meta['text']}" — {meta['author']}, {meta['source']}
-                
-                Write a powerful 2-sentence Deepstash-style insight explaining how 
+
+                Write a powerful 2-sentence Deepstash-style insight explaining how
                 this quote applies to their current mood. Be warm, direct and human.
                 Only output the 2 sentences, nothing else.
                 """
@@ -347,7 +410,8 @@ with right_col:
                         <div class="quote-icon">"</div>
                         <div class="quote-text">{meta['text']}</div>
                         <div class="quote-attribution">
-                            — {meta['author']} &nbsp;·&nbsp; <a href="{url}" target="_blank">📚 {meta['source']}</a>
+                            — {meta['author']} &nbsp;·&nbsp;
+                            <a href="{url}" target="_blank">📚 {meta['source']}</a>
                         </div>
                         <div class="divider"></div>
                         <div class="insight-label">💡 Your Insight</div>
